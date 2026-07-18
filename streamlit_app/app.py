@@ -7,22 +7,27 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import json
+import os
 import xgboost as xgb
 import shap
 import matplotlib.pyplot as plt
 
 st.set_page_config(page_title="Credit Risk Predictor", page_icon="💳", layout="wide")
 
+# Get the folder this script lives in, so file paths work regardless of
+# what directory the app is launched FROM (fixes deployment path issues)
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+
 # ===== Load model and artifacts (cached so it only loads once) =====
 @st.cache_resource
 def load_artifacts():
     model = xgb.XGBClassifier()
-    model.load_model("model.json")
+    model.load_model(os.path.join(APP_DIR, "model.json"))
 
-    with open("feature_columns.json") as f:
+    with open(os.path.join(APP_DIR, "feature_columns.json")) as f:
         feature_columns = json.load(f)
 
-    with open("defaults.json") as f:
+    with open(os.path.join(APP_DIR, "defaults.json")) as f:
         defaults = json.load(f)
 
     explainer = shap.TreeExplainer(model)
