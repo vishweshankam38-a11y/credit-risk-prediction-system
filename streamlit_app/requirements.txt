@@ -6,3 +6,5 @@ xgboost==3.3.0
 shap
 joblib
 matplotlib
+mysql-connector-python
+bcrypt

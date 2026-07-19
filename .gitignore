@@ -1,0 +1,15 @@
+# Secrets - never commit these
+secrets.toml
+
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Environment
+.env
+venv/
+
+# OS
+.DS_Store
+Thumbs.db

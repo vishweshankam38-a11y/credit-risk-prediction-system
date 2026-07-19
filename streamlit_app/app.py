@@ -8,35 +8,61 @@ import pandas as pd
 import numpy as np
 import json
 import os
-import csv
-from datetime import datetime
 import xgboost as xgb
 import shap
 import matplotlib.pyplot as plt
+import database as db
 
 st.set_page_config(page_title="Credit Risk Predictor", page_icon="💳", layout="wide")
 
 # Get the folder this script lives in, so file paths work regardless of
 # what directory the app is launched FROM (fixes deployment path issues)
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
-LOG_FILE = os.path.join(APP_DIR, "prediction_log.csv")
+
+# ===== Database config (from Streamlit secrets — see .streamlit/secrets.toml) =====
+DB_CONFIG = {
+    "host": st.secrets["mysql"]["host"],
+    "port": st.secrets["mysql"].get("port", 3306),
+    "user": st.secrets["mysql"]["user"],
+    "password": st.secrets["mysql"]["password"],
+    "database": st.secrets["mysql"]["database"],
+}
+
+# Make sure the required tables exist (safe to call every run — no-op if they do)
+db.init_db(DB_CONFIG)
 
 
-def log_prediction(proba, prediction):
-    """Append one prediction result to the local CSV log."""
-    file_exists = os.path.isfile(LOG_FILE)
-    with open(LOG_FILE, "a", newline="") as f:
-        writer = csv.writer(f)
-        if not file_exists:
-            writer.writerow(["timestamp", "probability", "prediction"])
-        writer.writerow([datetime.now().isoformat(), proba, int(prediction)])
+# ===== Admin Login Gate =====
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+    st.session_state.username = None
 
+if not st.session_state.logged_in:
+    st.title("🔒 Admin Login")
+    st.caption("This tool is restricted to authorized bank staff only.")
 
-def read_prediction_log():
-    """Read the log file, returning an empty DataFrame if it doesn't exist yet."""
-    if os.path.isfile(LOG_FILE):
-        return pd.read_csv(LOG_FILE)
-    return pd.DataFrame(columns=["timestamp", "probability", "prediction"])
+    with st.form("login_form"):
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        submitted = st.form_submit_button("Log In", type="primary", use_container_width=True)
+
+        if submitted:
+            if db.verify_admin(DB_CONFIG, username, password):
+                st.session_state.logged_in = True
+                st.session_state.username = username
+                st.rerun()
+            else:
+                st.error("Invalid username or password.")
+
+    st.stop()  # Halt execution here — nothing below renders until logged in
+
+# ===== Logged-in view: show who's logged in + a logout option =====
+with st.sidebar:
+    st.markdown(f"**Logged in as:** `{st.session_state.username}`")
+    if st.button("Log Out", use_container_width=True):
+        st.session_state.logged_in = False
+        st.session_state.username = None
+        st.rerun()
 
 # ===== Load model and artifacts (cached so it only loads once) =====
 @st.cache_resource
@@ -139,8 +165,8 @@ if st.button("🔍 Predict Credit Risk", type="primary", use_container_width=Tru
     proba = model.predict_proba(input_df)[0][1]
     prediction = model.predict(input_df)[0]
 
-    # Log this prediction for the analytics dashboard
-    log_prediction(proba, prediction)
+    # Log this prediction to MySQL for the analytics dashboard
+    db.insert_prediction(DB_CONFIG, input_dict, proba, prediction, st.session_state.username)
 
     st.subheader("Prediction Result")
 
@@ -262,17 +288,18 @@ st.divider()
 
 # ===== Prediction Analytics Dashboard =====
 st.subheader("📊 Prediction Analytics")
-st.caption("Aggregate stats across all predictions made using this app (this session/deployment).")
+st.caption("Aggregate stats across all predictions stored in the database.")
 
-log_df = read_prediction_log()
+records = db.get_all_predictions(DB_CONFIG)
+log_df = pd.DataFrame(records)
 
 if len(log_df) == 0:
     st.info("No predictions made yet. Run a prediction above to start building analytics.")
 else:
     total_predictions = len(log_df)
-    high_risk_count = int((log_df["prediction"] == 1).sum())
-    low_risk_count = int((log_df["prediction"] == 0).sum())
-    avg_risk = log_df["probability"].mean()
+    high_risk_count = int((log_df["risk_prediction"] == 1).sum())
+    low_risk_count = int((log_df["risk_prediction"] == 0).sum())
+    avg_risk = log_df["risk_probability"].mean()
 
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Total Predictions", total_predictions)
@@ -306,18 +333,22 @@ else:
     with chart_col2:
         st.markdown("**Risk Score Distribution (Histogram)**")
         fig4, ax4 = plt.subplots(figsize=(4, 4))
-        ax4.hist(log_df["probability"] * 100, bins=10, color="#3498db", edgecolor="white")
+        ax4.hist(log_df["risk_probability"] * 100, bins=10, color="#3498db", edgecolor="white")
         ax4.set_xlabel("Predicted Risk (%)")
         ax4.set_ylabel("Number of Predictions")
         plt.tight_layout()
         st.pyplot(fig4)
         plt.close(fig4)
 
-    with st.expander("View raw prediction log"):
-        st.dataframe(log_df.sort_values("timestamp", ascending=False), use_container_width=True, hide_index=True)
+    with st.expander("View raw prediction log (with full applicant inputs)"):
+        st.dataframe(
+            log_df.sort_values("prediction_timestamp", ascending=False),
+            use_container_width=True,
+            hide_index=True
+        )
 
     if st.button("🗑️ Clear Prediction History"):
-        os.remove(LOG_FILE)
+        db.clear_predictions(DB_CONFIG)
         st.rerun()
 
 st.divider()
