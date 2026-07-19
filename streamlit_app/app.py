@@ -221,23 +221,25 @@ if st.button("🔍 Predict Credit Risk", type="primary", use_container_width=Tru
     # ===== SHAP Explanation =====
     st.subheader("Why This Prediction? (SHAP Explanation)")
     st.markdown(
-        "The chart below shows which factors pushed this applicant's risk score "
-        "**up (red, toward default)** or **down (blue, toward non-default)**, and by how much."
+        "The chart below shows each factor's contribution, starting from the average "
+        "prediction (bottom) up to this applicant's final risk score (top). "
+        "**Red bars increase risk, blue bars decrease it.**"
     )
 
     shap_values = explainer.shap_values(input_df)
 
-    # shap.force_plot(matplotlib=True) creates its OWN new figure internally
-    # (it does not draw onto a pre-made one), so we must NOT pre-create a
-    # figure here — doing so previously left an empty, unclosed figure behind
-    # that caused text/artifacts to bleed into other charts on the page.
-    shap.force_plot(
-        explainer.expected_value, shap_values[0], input_df.iloc[0],
-        matplotlib=True, show=False
+    # Using a waterfall plot instead of the older force plot: it lists each
+    # feature on its own row (vertical layout), which avoids the horizontal
+    # label-collision issue the force plot has when there are many features.
+    explanation = shap.Explanation(
+        values=shap_values[0],
+        base_values=explainer.expected_value,
+        data=input_df.iloc[0].values,
+        feature_names=feature_columns
     )
+    shap.plots.waterfall(explanation, show=False, max_display=10)
     shap_fig = plt.gcf()
-    shap_fig.set_size_inches(10, 4)
-    st.pyplot(shap_fig)
+    st.pyplot(shap_fig, bbox_inches="tight")
     plt.close(shap_fig)
 
     # ===== Top contributing factors as a readable list =====
