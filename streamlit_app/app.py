@@ -8,6 +8,8 @@ import pandas as pd
 import numpy as np
 import json
 import os
+import csv
+from datetime import datetime
 import xgboost as xgb
 import shap
 import matplotlib.pyplot as plt
@@ -17,6 +19,24 @@ st.set_page_config(page_title="Credit Risk Predictor", page_icon="💳", layout=
 # Get the folder this script lives in, so file paths work regardless of
 # what directory the app is launched FROM (fixes deployment path issues)
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
+LOG_FILE = os.path.join(APP_DIR, "prediction_log.csv")
+
+
+def log_prediction(proba, prediction):
+    """Append one prediction result to the local CSV log."""
+    file_exists = os.path.isfile(LOG_FILE)
+    with open(LOG_FILE, "a", newline="") as f:
+        writer = csv.writer(f)
+        if not file_exists:
+            writer.writerow(["timestamp", "probability", "prediction"])
+        writer.writerow([datetime.now().isoformat(), proba, int(prediction)])
+
+
+def read_prediction_log():
+    """Read the log file, returning an empty DataFrame if it doesn't exist yet."""
+    if os.path.isfile(LOG_FILE):
+        return pd.read_csv(LOG_FILE)
+    return pd.DataFrame(columns=["timestamp", "probability", "prediction"])
 
 # ===== Load model and artifacts (cached so it only loads once) =====
 @st.cache_resource
@@ -30,10 +50,13 @@ def load_artifacts():
     with open(os.path.join(APP_DIR, "defaults.json")) as f:
         defaults = json.load(f)
 
-    explainer = shap.TreeExplainer(model)
-    return model, feature_columns, defaults, explainer
+    with open(os.path.join(APP_DIR, "dataset_averages.json")) as f:
+        dataset_averages = json.load(f)
 
-model, feature_columns, defaults, explainer = load_artifacts()
+    explainer = shap.TreeExplainer(model)
+    return model, feature_columns, defaults, dataset_averages, explainer
+
+model, feature_columns, defaults, dataset_averages, explainer = load_artifacts()
 
 st.title("💳 Credit Risk / Loan Default Prediction")
 st.markdown(
@@ -112,6 +135,9 @@ if st.button("🔍 Predict Credit Risk", type="primary", use_container_width=Tru
     proba = model.predict_proba(input_df)[0][1]
     prediction = model.predict(input_df)[0]
 
+    # Log this prediction for the analytics dashboard
+    log_prediction(proba, prediction)
+
     st.subheader("Prediction Result")
 
     result_col1, result_col2 = st.columns([1, 2])
@@ -131,6 +157,60 @@ if st.button("🔍 Predict Credit Risk", type="primary", use_container_width=Tru
             st.caption("Moderate risk — may warrant additional review.")
         else:
             st.caption("High risk — strong indicators of potential default.")
+
+    st.divider()
+
+    # ===== Visualizations: Risk Gauge + Comparison to Dataset =====
+    viz_col1, viz_col2 = st.columns(2)
+
+    with viz_col1:
+        st.markdown("**Risk Gauge**")
+        fig1, ax1 = plt.subplots(figsize=(4, 4))
+        risk_color = "#e74c3c" if proba >= 0.5 else ("#f39c12" if proba >= 0.2 else "#2ecc71")
+        wedges, _ = ax1.pie(
+            [proba, 1 - proba],
+            colors=[risk_color, "#e8e8e8"],
+            startangle=90,
+            counterclock=False,
+            wedgeprops={"width": 0.35}
+        )
+        ax1.text(0, 0, f"{proba*100:.1f}%", ha="center", va="center", fontsize=22, fontweight="bold")
+        ax1.text(0, -0.25, "Default Risk", ha="center", va="center", fontsize=10, color="gray")
+        ax1.set_aspect("equal")
+        st.pyplot(fig1)
+        plt.close(fig1)
+
+    with viz_col2:
+        st.markdown("**Applicant vs. Typical Applicant (Dataset Median)**")
+        compare_features = {
+            "Age": (age, dataset_averages["age"]),
+            "Monthly Income ($)": (monthly_income, dataset_averages["MonthlyIncome"]),
+            "Debt Ratio": (debt_ratio, dataset_averages["DebtRatio"]),
+            "Open Credit Lines": (open_credit_lines, dataset_averages["NumberOfOpenCreditLinesAndLoans"]),
+        }
+        fig2, ax2 = plt.subplots(figsize=(5, 4))
+        labels = list(compare_features.keys())
+        applicant_vals = [v[0] for v in compare_features.values()]
+        typical_vals = [v[1] for v in compare_features.values()]
+
+        # Normalize each pair to 0-100 scale so bars are visually comparable side by side
+        norm_applicant, norm_typical = [], []
+        for a_val, t_val in zip(applicant_vals, typical_vals):
+            max_val = max(a_val, t_val, 1)
+            norm_applicant.append((a_val / max_val) * 100)
+            norm_typical.append((t_val / max_val) * 100)
+
+        y_pos = np.arange(len(labels))
+        ax2.barh(y_pos - 0.2, norm_applicant, height=0.4, label="This Applicant", color="#3498db")
+        ax2.barh(y_pos + 0.2, norm_typical, height=0.4, label="Typical Applicant", color="#95a5a6")
+        ax2.set_yticks(y_pos)
+        ax2.set_yticklabels(labels)
+        ax2.set_xlabel("Relative Scale (%)")
+        ax2.legend(loc="lower right", fontsize=8)
+        ax2.invert_yaxis()
+        plt.tight_layout()
+        st.pyplot(fig2)
+        plt.close(fig2)
 
     st.divider()
 
@@ -166,6 +246,67 @@ if st.button("🔍 Predict Credit Risk", type="primary", use_container_width=Tru
         use_container_width=True,
         hide_index=True
     )
+
+st.divider()
+
+# ===== Prediction Analytics Dashboard =====
+st.subheader("📊 Prediction Analytics")
+st.caption("Aggregate stats across all predictions made using this app (this session/deployment).")
+
+log_df = read_prediction_log()
+
+if len(log_df) == 0:
+    st.info("No predictions made yet. Run a prediction above to start building analytics.")
+else:
+    total_predictions = len(log_df)
+    high_risk_count = int((log_df["prediction"] == 1).sum())
+    low_risk_count = int((log_df["prediction"] == 0).sum())
+    avg_risk = log_df["probability"].mean()
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Total Predictions", total_predictions)
+    m2.metric("High-Risk Predictions", high_risk_count)
+    m3.metric("Low-Risk Predictions", low_risk_count)
+    m4.metric("Average Risk Score", f"{avg_risk*100:.1f}%")
+
+    chart_col1, chart_col2 = st.columns(2)
+
+    with chart_col1:
+        st.markdown("**Risk Distribution**")
+        fig3, ax3 = plt.subplots(figsize=(4, 4))
+        counts = [low_risk_count, high_risk_count]
+        labels_pie = [f"Low Risk ({low_risk_count})", f"High Risk ({high_risk_count})"]
+        colors_pie = ["#2ecc71", "#e74c3c"]
+        # Avoid drawing an empty pie if one category is zero
+        non_zero = [(c, l, col) for c, l, col in zip(counts, labels_pie, colors_pie) if c > 0]
+        if non_zero:
+            ax3.pie(
+                [c for c, _, _ in non_zero],
+                labels=[l for _, l, _ in non_zero],
+                colors=[col for _, _, col in non_zero],
+                autopct="%1.0f%%",
+                startangle=90
+            )
+        ax3.set_aspect("equal")
+        st.pyplot(fig3)
+        plt.close(fig3)
+
+    with chart_col2:
+        st.markdown("**Risk Score Distribution (Histogram)**")
+        fig4, ax4 = plt.subplots(figsize=(4, 4))
+        ax4.hist(log_df["probability"] * 100, bins=10, color="#3498db", edgecolor="white")
+        ax4.set_xlabel("Predicted Risk (%)")
+        ax4.set_ylabel("Number of Predictions")
+        plt.tight_layout()
+        st.pyplot(fig4)
+        plt.close(fig4)
+
+    with st.expander("View raw prediction log"):
+        st.dataframe(log_df.sort_values("timestamp", ascending=False), use_container_width=True, hide_index=True)
+
+    if st.button("🗑️ Clear Prediction History"):
+        os.remove(LOG_FILE)
+        st.rerun()
 
 st.divider()
 st.caption(
