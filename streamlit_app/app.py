@@ -100,6 +100,10 @@ st.divider()
 # ===== Predict Button =====
 if st.button("🔍 Predict Credit Risk", type="primary", use_container_width=True):
 
+    # Clear any leftover/stale matplotlib figures from a previous run before
+    # drawing new ones — prevents charts from bleeding into each other
+    plt.close('all')
+
     # ===== Build feature row exactly matching training pipeline =====
     total_past_due = late_30_59 + late_60_89 + late_90_plus
     estimated_monthly_debt = debt_ratio * monthly_income
@@ -223,13 +227,18 @@ if st.button("🔍 Predict Credit Risk", type="primary", use_container_width=Tru
 
     shap_values = explainer.shap_values(input_df)
 
-    fig, ax = plt.subplots(figsize=(10, 4))
+    # shap.force_plot(matplotlib=True) creates its OWN new figure internally
+    # (it does not draw onto a pre-made one), so we must NOT pre-create a
+    # figure here — doing so previously left an empty, unclosed figure behind
+    # that caused text/artifacts to bleed into other charts on the page.
     shap.force_plot(
         explainer.expected_value, shap_values[0], input_df.iloc[0],
         matplotlib=True, show=False
     )
-    st.pyplot(plt.gcf())
-    plt.close()
+    shap_fig = plt.gcf()
+    shap_fig.set_size_inches(10, 4)
+    st.pyplot(shap_fig)
+    plt.close(shap_fig)
 
     # ===== Top contributing factors as a readable list =====
     st.markdown("**Top factors influencing this prediction:**")
@@ -270,6 +279,7 @@ else:
     m4.metric("Average Risk Score", f"{avg_risk*100:.1f}%")
 
     chart_col1, chart_col2 = st.columns(2)
+    plt.close('all')  # ensure a clean slate before drawing these two charts
 
     with chart_col1:
         st.markdown("**Risk Distribution**")
