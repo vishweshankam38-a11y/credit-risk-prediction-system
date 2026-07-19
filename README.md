@@ -27,7 +27,23 @@ Lenders need to assess the risk of loan default before approving credit. A model
 4. **Modeling** — compared Logistic Regression, Random Forest, and XGBoost
 5. **Evaluation** — precision, recall, F1, ROC-AUC, and confusion matrices (not accuracy alone, since it's misleading under imbalance)
 6. **Explainability** — SHAP global feature importance and per-applicant local explanations
-7. **Deployment** — interactive Streamlit app for live predictions with explanations
+7. **Deployment** — interactive Streamlit app for live predictions with explanations, including a built-in analytics dashboard tracking prediction history
+
+## App Features
+
+Beyond a single prediction, the deployed app includes:
+
+- **Risk gauge** — a visual donut chart showing the applicant's default probability
+- **Applicant vs. typical applicant comparison** — bar chart comparing key inputs (age, income, debt ratio, credit lines) against the dataset median
+- **SHAP waterfall explanation** — shows exactly which features pushed this specific applicant's risk score up or down, and by how much
+- **Prediction Analytics Dashboard** — tracks every prediction made during the session/deployment and displays:
+  - Total predictions made
+  - Count of high-risk vs. low-risk predictions
+  - Average predicted risk score across all predictions
+  - A risk distribution pie chart and a histogram of all predicted risk scores
+  - An expandable raw prediction log (timestamp, probability, prediction) with an option to clear history
+
+*Note: prediction history is stored in a local CSV log rather than a database, so on Streamlit Cloud's free tier it persists during an active session but may reset if the app goes to sleep from inactivity. A production version would use a persistent database instead.*
 
 ## Results
 
