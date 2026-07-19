@@ -2,7 +2,7 @@
 
 Predicting whether a loan applicant will experience serious delinquency within 2 years, using machine learning — with SHAP explanations so every prediction can be justified, not just delivered as a black-box score.
 
-**[Live App Demo](#)** ← *replace this link once deployed on Streamlit Cloud*
+**https://credit-risk-prediction-system-11.streamlit.app/**  **[Live App Demo](#)**
 
 ## Problem Statement
 
