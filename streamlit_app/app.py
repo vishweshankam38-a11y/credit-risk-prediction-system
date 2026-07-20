@@ -32,12 +32,6 @@ DB_CONFIG = {
 # Make sure the required tables exist (safe to call every run — no-op if they do)
 db.init_db(DB_CONFIG)
 
-# === TEMPORARY DIRECT INJECTION (Remove after logging in successfully) ===
-try:
-    db.create_admin(DB_CONFIG, "Vishu", "vishwesh@2006")
-except Exception as e:
-    pass
-
 # ===== Admin Login Gate =====
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
