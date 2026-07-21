@@ -15,6 +15,8 @@ def get_connection(config):
         user=config["user"],
         password=config["password"],
         database=config["database"],
+        ssl_disabled=False,       # Ensures SSL is not turned off
+        ssl_verify_cert=False
     )
 
 
