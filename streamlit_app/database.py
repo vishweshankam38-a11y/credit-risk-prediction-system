@@ -2,21 +2,21 @@
 Database module: MySQL storage for prediction history + admin authentication.
 """
 
-import mysql.connector
+import pymysql
 import bcrypt
 from datetime import datetime
 
 
 def get_connection(config):
-    """Open a new MySQL connection using the given config dict."""
-    return mysql.connector.connect(
+    """Establishes an SSL-secured connection to Aiven MySQL using PyMySQL."""
+    return pymysql.connect(
         host=config["host"],
-        port=config.get("port", 3306),
+        port=int(config["port"]),
         user=config["user"],
         password=config["password"],
         database=config["database"],
-        ssl_disabled=False,       # Ensures SSL is not turned off
-        ssl_verify_cert=False
+        cursorclass=pymysql.cursors.DictCursor,  # Automatically returns rows as Python dicts
+        ssl={"ssl": True}  # Satisfies Aiven's REQUIRED SSL mode
     )
 
 
@@ -76,7 +76,7 @@ def create_admin(config, username, password):
 def verify_admin(config, username, password):
     """Check username/password against stored hash. Returns True/False."""
     conn = get_connection(config)
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor()
     cursor.execute("SELECT password_hash FROM admins WHERE username = %s", (username,))
     row = cursor.fetchone()
     cursor.close()
@@ -116,7 +116,7 @@ def insert_prediction(config, input_dict, proba, prediction, predicted_by):
 def get_all_predictions(config):
     """Fetch all stored predictions, most recent first."""
     conn = get_connection(config)
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor()
     cursor.execute("SELECT * FROM predictions ORDER BY prediction_timestamp DESC")
     rows = cursor.fetchall()
     cursor.close()
@@ -125,9 +125,10 @@ def get_all_predictions(config):
 
 
 def clear_predictions(config):
-    conn = mysql.connector.connect(**config)
+    """Wipes prediction history and resets AUTO_INCREMENT ID to 1."""
+    conn = get_connection(config)
     cursor = conn.cursor()
-    cursor.execute("TRUNCATE TABLE prediction_logs;")
+    cursor.execute("TRUNCATE TABLE predictions;")
     conn.commit()
     cursor.close()
     conn.close()
