@@ -7,18 +7,12 @@ import bcrypt
 from datetime import datetime
 import os
 import ssl
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CA_PATH = os.path.join(BASE_DIR, "ca.pem")
+# Create standard SSL context for Aiven MySQL
+ssl_context = ssl.create_default_context()
+ssl_context.check_hostname = False
+ssl_context.verify_mode = ssl.CERT_NONE
 
 def get_connection(config):
-    # Safely build the SSL dictionary for PyMySQL
-    ssl_settings = {}
-    if os.path.exists(CA_PATH):
-        ssl_settings = {"ca": CA_PATH}
-    else:
-        ssl_settings = {"ssl": True}  # Fallback if ca.pem isn't found
-
     return pymysql.connect(
         host=config["host"],
         port=int(config["port"]),
@@ -27,7 +21,7 @@ def get_connection(config):
         database=config["database"],
         cursorclass=pymysql.cursors.DictCursor,
         connect_timeout=10,
-        ssl=ssl_settings  # <-- Passed correctly to the exact parameter PyMySQL expects
+        ssl=ssl_context  # Pass the built-in ssl context
     )
 
 def init_db(config):
