@@ -8,3 +8,4 @@ joblib
 matplotlib
 mysql-connector-python
 bcrypt
+PyMySQL
