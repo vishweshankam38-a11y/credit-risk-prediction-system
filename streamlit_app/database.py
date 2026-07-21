@@ -5,14 +5,12 @@ Database module: MySQL storage for prediction history + admin authentication.
 import pymysql
 import bcrypt
 from datetime import datetime
-import ssl
+import os
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CA_PATH = os.path.join(BASE_DIR, "ca.pem")
 
 def get_connection(config):
-    # Create an SSL context that accepts the connection without local CA files
-    ssl_context = ssl.create_default_context()
-    ssl_context.check_hostname = False
-    ssl_context.verify_mode = ssl.CERT_NONE
-
     return pymysql.connect(
         host=config["host"],
         port=int(config["port"]),
@@ -20,7 +18,7 @@ def get_connection(config):
         password=config["password"],
         database=config["database"],
         cursorclass=pymysql.cursors.DictCursor,
-        ssl=ssl_context  # Pass the explicit SSL context
+        ssl={"ca": CA_PATH}  # Connects securely using Aiven's trusted CA cert
     )
 
 
