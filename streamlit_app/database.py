@@ -5,18 +5,22 @@ Database module: MySQL storage for prediction history + admin authentication.
 import pymysql
 import bcrypt
 from datetime import datetime
-
+import ssl
 
 def get_connection(config):
-    """Establishes an SSL-secured connection to Aiven MySQL using PyMySQL."""
+    # Create an SSL context that accepts the connection without local CA files
+    ssl_context = ssl.create_default_context()
+    ssl_context.check_hostname = False
+    ssl_context.verify_mode = ssl.CERT_NONE
+
     return pymysql.connect(
         host=config["host"],
         port=int(config["port"]),
         user=config["user"],
         password=config["password"],
         database=config["database"],
-        cursorclass=pymysql.cursors.DictCursor,  # Automatically returns rows as Python dicts
-        ssl={"ssl": True}  # Satisfies Aiven's REQUIRED SSL mode
+        cursorclass=pymysql.cursors.DictCursor,
+        ssl=ssl_context  # Pass the explicit SSL context
     )
 
 
