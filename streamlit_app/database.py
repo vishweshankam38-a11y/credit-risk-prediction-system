@@ -4,25 +4,32 @@ Database module: MySQL storage for prediction history + admin authentication.
 
 import pymysql
 import bcrypt
-from datetime import datetime
-import os
 import ssl
-# Create standard SSL context for Aiven MySQL
-ssl_context = ssl.create_default_context()
-ssl_context.check_hostname = False
-ssl_context.verify_mode = ssl.CERT_NONE
+import os
+import streamlit as st
+from datetime import datetime
 
 def get_connection(config):
-    return pymysql.connect(
-        host=config["host"],
-        port=int(config["port"]),
-        user=config["user"],
-        password=config["password"],
-        database=config["database"],
-        cursorclass=pymysql.cursors.DictCursor,
-        connect_timeout=10,
-        ssl=ssl_context  # Pass the built-in ssl context
-    )
+    # Standard SSL context for Aiven Cloud MySQL
+    ssl_ctx = ssl.create_default_context()
+    ssl_ctx.check_hostname = False
+    ssl_ctx.verify_mode = ssl.CERT_NONE
+
+    try:
+        return pymysql.connect(
+            host=config["host"],
+            port=int(config["port"]),
+            user=config["user"],
+            password=config["password"],
+            database=config["database"],
+            cursorclass=pymysql.cursors.DictCursor,
+            connect_timeout=10,
+            ssl=ssl_ctx
+        )
+    except Exception as e:
+        # Displays raw connection error directly on Streamlit UI
+        st.error(f"❌ Database Connection Error: {e}")
+        raise e
 
 def init_db(config):
     """Create the required tables if they don't already exist."""
