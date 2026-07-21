@@ -8,22 +8,16 @@ from datetime import datetime
 import os
 import ssl
 
-# Resolve path relative to database.py
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CA_PATH = os.path.join(BASE_DIR, "ca.pem")
 
 def get_connection(config):
-    ssl_config = {}
-
-    # Check if ca.pem exists in the directory
+    # Safely build the SSL dictionary for PyMySQL
+    ssl_settings = {}
     if os.path.exists(CA_PATH):
-        ssl_config = {"ca": CA_PATH}
+        ssl_settings = {"ca": CA_PATH}
     else:
-        # Fallback SSL configuration if ca.pem isn't loaded/found
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
-        ssl_config = {"ssl_ctx": ctx}
+        ssl_settings = {"ssl": True}  # Fallback if ca.pem isn't found
 
     return pymysql.connect(
         host=config["host"],
@@ -33,9 +27,8 @@ def get_connection(config):
         database=config["database"],
         cursorclass=pymysql.cursors.DictCursor,
         connect_timeout=10,
-        **ssl_config
+        ssl=ssl_settings  # <-- Passed correctly to the exact parameter PyMySQL expects
     )
-
 
 def init_db(config):
     """Create the required tables if they don't already exist."""
