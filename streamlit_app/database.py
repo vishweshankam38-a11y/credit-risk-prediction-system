@@ -123,10 +123,9 @@ def get_all_predictions(config):
 
 
 def clear_predictions(config):
-    """Delete all prediction records."""
-    conn = get_connection(config)
+    conn = mysql.connector.connect(**config)
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM predictions")
+    cursor.execute("TRUNCATE TABLE prediction_logs;")
     conn.commit()
     cursor.close()
     conn.close()
